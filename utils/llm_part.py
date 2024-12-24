@@ -34,9 +34,10 @@ class V2VLLM:
     def start(self,input_audio_queue):
         while True:
             audio_path = input_audio_queue.get()
-            self.inference(audio_path)
+            self.ollama_inference(audio_path)
 
-    def inference(self,audio_path):
+
+    def ollama_inference(self,audio_path):
         context_wenben = ""
         res = self.sencevoice.generate(
             input=audio_path,
@@ -127,3 +128,4 @@ class V2VLLM:
             if wav_path is None:  # 检查结束信号
                 break
             winsound.PlaySound(wav_path, winsound.SND_FILENAME)
+
