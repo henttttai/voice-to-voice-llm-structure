@@ -14,7 +14,9 @@ INPUT_DIR = "wav_input"  # 用户语音输入目录
 OUTPUT_DIR = "wav_output"  # LLM语音输出目录
 NO_SPEECH_THRESHOLD = 1  # 无效语音阈值，单位：秒
 
-cosyvoice_dir = "E:/cosvoice/CosyVoice/pretrained_models/CosyVoice-300M" # cosyvoice模型地址
+if_tool = False
+
+cosyvoice_dir = "E:/cosvoice/CosyVoice/pretrained_models/CosyVoice2-0.5B" # cosyvoice模型地址
 sensevoice_dir = "E:/cosvoice/SenseVoice/pretrained_model/SenseVoiceSmall" # sencevoice模型地址
 ollama_api = "http://localhost:11434/api/chat" # ollama的api地址
 
@@ -24,7 +26,7 @@ audio_stream = AudioSteam(AUDIO_RATE, AUDIO_CHANNELS, CHUNK, VAD_MODE, INPUT_DIR
 input_audio_queue = Queue()
 
 audio_threading = threading.Thread(target=audio_stream.audio_recorder_stream, args=(input_audio_queue,))
-inference_threading = threading.Thread(target=v2vllm.start, args=(input_audio_queue, ))
+inference_threading = threading.Thread(target=v2vllm.start, args=(input_audio_queue, if_tool))
 
 audio_threading.start()
 inference_threading.start()
