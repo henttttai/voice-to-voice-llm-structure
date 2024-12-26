@@ -13,11 +13,9 @@ from llm_tools import *
 
 
 class V2VLLM:
-    def __init__(self,cosyvoice_dir, sensevoice_dir, ollama_api):
-
+    def __init__(self,gptsovits_api, sensevoice_dir, ollama_api):
         self.tools = TOOLS
 
-        self.cosyvoice = CosyVoice(cosyvoice_dir)
         self.sencevoice = AutoModel(
                 model=sensevoice_dir,
                 trust_remote_code=True,
@@ -28,19 +26,29 @@ class V2VLLM:
                 hub="hf",
             )
 
-        self.url_generate = ollama_api
+        self.url_ollama = ollama_api
+        self.url_gptsovits = gptsovits_api
 
         self.history_context = []
 
-    def start(self,input_audio_queue):
+        self.outputwav_num = 0
+
+        change_gpt_url = "http://127.0.0.1:9880/set_gpt_weights"
+        change_sovits_url = "http://127.0.0.1:9880/set_sovits_weights"
+
+        gpt_weights = "E:/TTS/GPT-SoVITS/GPT_weights_v2/井芹仁菜V3-e15.ckpt"
+        sovits_weights = "E:/TTS/GPT-SoVITS/SoVITS_weights_v2/井芹仁菜V3_e100_s1800.pth"
+
+        requests.get(f"{change_gpt_url}?weights_path={gpt_weights}")
+        requests.get(f"{change_sovits_url}?weights_path={sovits_weights}")
+
+    def start(self,input_audio_queue, if_tool):
         while True:
             audio_path = input_audio_queue.get()
-            self.v2v_inference(audio_path, if_tools=False)
-
+            self.v2v_inference(audio_path, if_tools=if_tool)
 
     def transformers_inference(self):
         return 0
-
 
     def ollama_tooluse_inference(self, text):
         context_wenben = ""
@@ -70,7 +78,7 @@ class V2VLLM:
             "stream": False,
         }
 
-        response_middel = self.get_response(self.url_generate, data, if_tooluse=True)
+        response_middel = self.get_response(self.url_ollama, data, if_tooluse=True)
 
         messages.append(response_middel["message"])
 
@@ -95,7 +103,7 @@ class V2VLLM:
             "stream": False,
         }
 
-        response = self.get_response(self.url_generate,data, True)
+        response = self.get_response(self.url_ollama ,data, True)
 
         messages.append(response["message"])
         res = messages[-1]["content"]
@@ -118,9 +126,6 @@ class V2VLLM:
 
         context_wenben += "prompt:" + text + "\n"
 
-        if text == "":
-            return 0
-
         user_context_dict = {
             "role": "user",
             "content": f"{text}"
@@ -135,7 +140,7 @@ class V2VLLM:
         }
 
         print("--------------------------------开始生成回答-------------------------------------")
-        res = self.get_response(self.url_generate, data)
+        res = self.get_response(self.url_ollama, data)
         print("--------------------------------生成回答结束-------------------------------------")
 
         context_wenben += "answer:" + res + "\n"
@@ -162,6 +167,9 @@ class V2VLLM:
             merge_length_s=15,
         )
         in_text = rich_transcription_postprocess(in_text[0]["text"])
+
+        if in_text == "":
+            return None
 
         if if_tools:
             out_text = self.ollama_tooluse_inference(in_text)
@@ -195,11 +203,40 @@ class V2VLLM:
 
 
     def audio_generator(self, text, audio_queue):
-        for i, j in enumerate(self.cosyvoice.inference_sft(f'{text}', '中文女', stream=True)):
-            wav_path = f'wav_output/zero_shot_{i}.wav'
-            torchaudio.save(wav_path, j['tts_speech'], 22050)
-            audio_queue.put(wav_path)
+
+        json_data = {
+            "text": f"{text}",
+            "text_lang": "zh",
+            "ref_audio_path": "E:/TTS/nina3/nina3 (1).wav",  # str.(required) reference audio path
+            "aux_ref_audio_paths": [],  # list.(optional) auxiliary reference audio paths for multi-speaker tone fusion
+            "prompt_text": "ももかさんってそうなんですね。いますよね、つゆ多めがいいって人。", # str.(optional) prompt text for the reference audio
+            "prompt_lang": "ja",  # str.(required) language of the prompt text for the reference audio
+            "top_k": 15,  # int. top k sampling
+            "top_p": 1,  # float. top p sampling
+            "temperature": 1,  # float. temperature for sampling
+            "text_split_method": "cut0",  # str. text split method, see text_segmentation_method.py for details.
+            "batch_size": 1,  # int. batch size for inference
+            "batch_threshold": 0.75,  # float. threshold for batch splitting.
+            "split_bucket": True,  # bool. whether to split the batch into multiple buckets.
+            "speed_factor": 1.0,  # float. control the speed of the synthesized audio.
+            "streaming_mode": False,  # bool. whether to return a streaming response.
+            "seed": -1,  # int. random seed for reproducibility.
+            "parallel_infer": True,  # bool. whether to use parallel inference.
+            "repetition_penalty": 1.35  # float. repetition penalty for T2S model.
+        }
+
+
+        res = requests.post(self.url_gptsovits, json=json_data)
+
+        wav_path = f"wav_output/output_{self.outputwav_num}.wav"
+        self.outputwav_num += 1
+
+        with open(wav_path, "wb") as f:
+            f.write(res.content)
+
+        audio_queue.put(wav_path)
         audio_queue.put(None)  # 发送结束信号
+
 
 
     def audio_player(self, audio_queue):
@@ -208,3 +245,11 @@ class V2VLLM:
             if wav_path is None:  # 检查结束信号
                 break
             winsound.PlaySound(wav_path, winsound.SND_FILENAME)
+
+if __name__ == '__main__':
+    sensevoice_dir = "E:/TTS/cosvoice/SenseVoice/pretrained_model/SenseVoiceSmall"  # sencevoice模型地址
+    ollama_url = "http://localhost:11434/api/chat"  # ollama的api地址
+    gptsovits_url = "http://127.0.0.1:9880/tts"
+
+    test = V2VLLM(gptsovits_url, sensevoice_dir, ollama_url)
+    test.v2v_inference("E:/TTS/new_structure/wav_input/user_input_10.wav", )

@@ -11,7 +11,7 @@ import pygame
 from joblib.externals.loky import set_loky_pickler
 
 
-class AudioSteam:
+class AudioStream:
     def __init__(self, audio_rate, audio_channels, chunk, vad_mode, input_dir, no_speech_threshold):
         self.audio_rate = audio_rate
         self.audio_channels = audio_channels
